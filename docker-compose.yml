@@ -1,0 +1,35 @@
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: football_hub
+      MYSQL_ROOT_PASSWORD: root
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./backend/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+  backend:
+    build: ./backend
+    environment:
+      PORT: 4000
+      FRONTEND_URL: http://localhost:5173
+      JWT_SECRET: local-development-secret-change-me
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_NAME: football_hub
+      DB_USER: root
+      DB_PASSWORD: root
+    depends_on:
+      - mysql
+    ports:
+      - "4000:4000"
+  frontend:
+    build: ./frontend
+    depends_on:
+      - backend
+    ports:
+      - "5173:80"
+volumes:
+  mysql_data:
