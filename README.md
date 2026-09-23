@@ -1,93 +1,84 @@
-# Football Hub
+# Football Platform
 
-Учебный футбольный портал на JavaScript для лабораторных работ №2-4. В приложении есть регистрация, вход, защищенные страницы, новости, календарь матчей, команды, турниры, избранное и административное создание новостей.
+Полноценный JavaScript-проект футбольного сайта с:
+- регистрацией и входом;
+- ролями пользователя и администратора;
+- защищёнными маршрутами;
+- CRUD для матчей;
+- MySQL в качестве базы данных;
+- адаптивным интерфейсом.
 
-## Стек
+## Быстрый запуск
 
-- Frontend: React, Vite, React Router, CSS
-- Backend: Node.js, Express, Zod
-- Database: MySQL 8
-- Security: bcryptjs, JWT в httpOnly cookie, CORS, серверная и клиентская валидация
-- Local deployment: Docker Compose
+1. Установите MySQL и создайте базу данных.
+2. Скопируйте `.env.example` в `.env` и укажите свои данные:
 
-## Запуск локально
+```env
+MYSQL_HOST=localhost
+MYSQL_PORT=3306
+MYSQL_USER=root
+MYSQL_PASSWORD=your_mysql_password
+MYSQL_DATABASE=football_demo
+JWT_SECRET=football-secret-key
+PORT=3000
+```
 
-1. Установите Node.js 22+ и Docker Desktop.
-2. Скопируйте репозиторий и установите зависимости:
+3. Установите зависимости:
 
-```powershell
-cd backend
+```bash
 npm install
-cd ..\frontend
-npm install
 ```
 
-3. Создайте базу данных MySQL и выполните `backend/schema.sql`. Для локальной установки скопируйте `backend/.env.example` в `backend/.env` и заполните пароль MySQL.
-4. В первом терминале запустите API:
+4. Запустите проект:
 
-```powershell
-cd backend
-npm run dev
+```bash
+npm start
 ```
 
-5. Во втором терминале запустите клиент:
+5. Откройте в браузере:
 
-```powershell
-cd frontend
-npm run dev
+```text
+http://localhost:3000
 ```
 
-Откройте http://localhost:5173. API доступно на http://localhost:4000/api.
+## Данные администратора
 
-### Вариант Docker
+- Email: admin@football.local
+- Пароль: Admin123!
 
-```powershell
-docker compose up --build
-```
+## Основные страницы
 
-После запуска клиент доступен на http://localhost:5173, API на http://localhost:4000.
-
-## Основные маршруты frontend
-
-- `/` главная страница и ближайшие матчи
-- `/news` новости с поиском, фильтром категории и сортировкой
-- `/matches` календарь с фильтром статуса
-- `/teams` команды
-- `/tournaments` турниры
-- `/auth/login` вход
-- `/auth/register` регистрация
-- `/profile` приватный профиль
-- `/favorites` приватное избранное
-- `/admin` приватная панель администратора
-- неизвестные URL показывают 404
+- `/` — главная
+- `/auth/login` — вход
+- `/auth/register` — регистрация
+- `/profile` — личный кабинет
+- `/matches` — матчи
+- `/teams` — команды
+- `/news` — новости
+- `/favorites` — избранное
+- `/admin` — панель администратора
 
 ## API
 
-- `POST /api/auth/register` регистрация с Zod-валидацией и bcrypt-хешированием
-- `POST /api/auth/login` вход и установка JWT cookie
-- `POST /api/auth/logout` выход и очистка cookie
-- `GET /api/auth/me` текущий пользователь
-- `GET /api/news?search=&category=&sort=` список новостей
-- `POST /api/news` создание новости, только admin
-- `DELETE /api/news/:id` удаление новости, только admin
-- `GET /api/matches?status=` список матчей
-- `GET /api/teams` команды
-- `GET /api/tournaments` турниры
-- `POST /api/news/:id/favorite` добавить в избранное
-- `DELETE /api/news/:id/favorite` удалить из избранного
-- `GET /api/favorites` избранные новости текущего пользователя
+- `POST /api/auth/register`
+- `POST /api/auth/login`
+- `GET /api/auth/me`
+- `GET /api/matches`
+- `POST /api/matches`
+- `PUT /api/matches/:id`
+- `DELETE /api/matches/:id`
+- `GET /api/teams`
+- `GET /api/news`
+- `GET /api/favorites`
+- `POST /api/favorites/:matchId`
+- `DELETE /api/favorites/:matchId`
 
-Для создания администратора зарегистрируйте пользователя, затем в MySQL выполните `UPDATE users SET role = 'admin' WHERE email = 'your@email.com';`.
+## Технологии
 
-## Production
-
-Перед публикацией задайте отдельные значения `JWT_SECRET`, `DB_PASSWORD`, `FRONTEND_URL`, `VITE_API_URL`, включите HTTPS и используйте managed MySQL. Подходящий вариант для учебного production-деплоя: frontend на Azure Static Web Apps или Vercel, backend на Azure App Service/Render, MySQL на Azure Database for MySQL или PlanetScale. Публичные ссылки появятся после выполнения деплоя с учетными данными облака.
-
-## Проверка
-
-```powershell
-cd frontend
-npm run build
-cd ..\backend
-node --check src/server.js
-```
+- JavaScript
+- Node.js
+- Express
+- MySQL
+- bcryptjs
+- JWT
+- HTML/CSS/JS frontend

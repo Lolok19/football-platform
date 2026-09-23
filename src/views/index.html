@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Liverpool FC</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: linear-gradient(180deg, #7b0712 0%, #b50d1a 100%);
+      color: #fff8f8;
+    }
+    a { color: inherit; text-decoration: none; }
+    .topbar {
+      background: rgba(30, 0, 5, 0.75);
+      border-bottom: 2px solid rgba(255,255,255,0.16);
+      padding: 16px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .brand { font-size: 26px; font-weight: 800; }
+    nav { display: flex; gap: 10px; flex-wrap: wrap; }
+    nav a, nav button {
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.18);
+      border-radius: 9px;
+      color: white;
+      padding: 8px 12px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 700;
+    }
+    nav button {
+      background: white;
+      color: #8f0913;
+      border: none;
+    }
+    .container { max-width: 1200px; margin: 28px auto; padding: 0 16px; }
+    .card {
+      background: rgba(255,255,255,0.09);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 16px;
+      box-shadow: 0 14px 28px rgba(0,0,0,0.18);
+      padding: 22px;
+      margin: 18px 0;
+    }
+    .hero, .grid, .admin-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+    }
+    .stat, .match-card, .team-card, .news-card, .panel-card {
+      background: rgba(0,0,0,0.08);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 14px;
+      padding: 18px;
+    }
+    .match-card, .team-card, .news-card { cursor: pointer; }
+    .muted { color: #f9dfe3; opacity: 0.9; }
+    .team-detail {
+      margin-top: 18px;
+      background: rgba(0,0,0,0.08);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 14px;
+      padding: 18px;
+    }
+    form { max-width: 520px; }
+    input, select, textarea, button {
+      width: 100%;
+      padding: 11px 12px;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.14);
+      margin: 6px 0 12px;
+      font-size: 16px;
+      background: rgba(255,255,255,0.08);
+      color: white;
+    }
+    textarea { min-height: 120px; }
+    button {
+      background: linear-gradient(90deg, #ffffff 0%, #ffdfe5 100%);
+      color: #7a0712;
+      border: none;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    button.danger { background: #47070d; color: white; }
+    .error { color: #ffe5e8; }
+    .success { color: #ebffd9; }
+    @media (max-width: 600px) {
+      nav { width: 100%; }
+      nav a, nav button { width: 100%; text-align: center; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">⚽ Liverpool FC</div>
+    <nav id="nav"></nav>
+  </header>
+  <main class="container" id="app"></main>
+
+  <script>
+    const API = '/api';
+    let token = localStorage.getItem('token');
+    let currentUser = null;
+    try {
+      currentUser = JSON.parse(localStorage.getItem('user') || 'null');
+    } catch (error) {
+      currentUser = null;
+    }
+
+    const nav = document.getElementById('nav');
+    const app = document.getElementById('app');
+
+    function setPage(content) { app.innerHTML = content; }
+    function showError(message) { return '<p class="error">' + (message || 'Ошибка') + '</p>'; }
+    function formatDate(value) {
+      if (!value) return 'Дата будет объявлена';
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return value;
+      return date.toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    }
+
+    async function request(url, options) {
+      const config = Object.assign({ headers: { 'Content-Type': 'application/json' } }, options || {});
+      if (token) {
+        config.headers = Object.assign({}, config.headers, { Authorization: 'Bearer ' + token });
+      }
+      const response = await fetch(API + url, config);
+      const text = await response.text();
+      let data = null;
+      try { data = text ? JSON.parse(text) : null; } catch (error) { data = null; }
+      if (!response.ok) {
+        throw new Error((data && data.message) || 'Ошибка запроса');
+      }
+      return data;
+    }
+
+    function saveUser(user) {
+      currentUser = user;
+      localStorage.setItem('user', JSON.stringify(user));
+    }
+
+    function logout() {
+      token = null;
+      currentUser = null;
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      history.pushState(null, '', '/');
+      renderPage();
+    }
+
+    function ensureAuth() {
+      if (!token || !currentUser) {
+        setPage('<div class="card"><h1>Войдите в аккаунт</h1><p>Для доступа к панели и избранному нужен вход.</p><button onclick="history.pushState(null, \"\", \'/auth/login\'); renderPage();">Войти</button></div>');
+        return false;
+      }
+      return true;
+    }
+
+    function renderNav() {
+      const items = currentUser
+        ? [
+            ['Главная', '/'],
+            ['Матчи', '/matches'],
+            ['Команды', '/teams'],
+            ['Новости', '/news'],
+            ['Профиль', '/profile'],
+            ...(currentUser.role === 'admin' ? [['Админ', '/admin']] : [])
+          ]
+        : [
+            ['Главная', '/'],
+            ['Матчи', '/matches'],
+            ['Команды', '/teams'],
+            ['Новости', '/news'],
+            ['Войти', '/auth/login'],
+            ['Регистрация', '/auth/register']
+          ];
+
+      nav.innerHTML = items.map(function(item) {
+        return '<a href="#" data-path="' + item[1] + '">' + item[0] + '</a>';
+      }).join('') + (currentUser ? '<button onclick="logout()">Выйти</button>' : '');
+
+      nav.querySelectorAll('a').forEach(function(link) {
+        link.addEventListener('click', function(event) {
+          event.preventDefault();
+          history.pushState(null, '', link.getAttribute('data-path'));
+          renderPage();
+        });
+      });
+    }
+
+    function getPath() {
+      const pathname = window.location.pathname || '/';
+      if (pathname === '/auth/login') return 'login';
+      if (pathname === '/auth/register') return 'register';
+      if (pathname === '/auth/forgot-password') return 'forgotPassword';
+      if (pathname === '/profile') return 'profile';
+      if (pathname === '/matches') return 'matches';
+      if (pathname === '/teams') return 'teams';
+      if (pathname === '/news') return 'news';
+      if (pathname === '/admin') return 'admin';
+      return 'home';
+    }
+
+    async function loadHomePage() {
+      try {
+        const matches = await request('/matches');
+        const news = await request('/news');
+        const upcoming = matches.slice(0, 4);
+        const matchCards = upcoming.map(function(match) {
+          return '<div class="match-card"><h3>' + match.homeTeam + ' vs ' + match.awayTeam + '</h3><p class="muted">' + match.championship + '</p><p>' + formatDate(match.matchDate) + '</p></div>';
+        }).join('');
+        const newsCards = news.slice(0, 3).map(function(item) {
+          return '<div class="news-card"><h3>' + item.title + '</h3><p class="muted">' + item.category + '</p><p>' + item.text + '</p></div>';
+        }).join('');
+
+        setPage('<div class="card"><h1>Будущие матчи Ливерпуля</h1><div class="hero"><div class="stat"><h3>Календарь</h3><p>Следующие игры, новости и подготовка команды.</p></div><div class="stat"><h3>Главный турнир</h3><p>Премьер-лига, кубки и важные встречи сезона.</p></div><div class="stat"><h3>Командный дух</h3><p>Красная атмосфера и предстоящие соперники.</p></div></div></div>' +
+          '<div class="card"><h2>Предстоящие матчи</h2><div class="grid">' + matchCards + '</div></div>' +
+          '<div class="card"><h2>Новости клуба</h2><div class="grid">' + newsCards + '</div></div>');
+      } catch (error) {
+        setPage('<div class="card"><h1>Ошибка</h1>' + showError(error.message) + '</div>');
+      }
+    }
+
+    async function loadMatchesPage() {
+      try {
+        const matches = await request('/matches');
+        const cards = matches.map(function(match) {
+          return '<div class="match-card"><h3>' + match.homeTeam + ' vs ' + match.awayTeam + '</h3><p class="muted">' + match.championship + '</p><p>' + formatDate(match.matchDate) + '</p><p class="muted">Статус: ' + (match.status || 'scheduled') + '</p><button class="buy-ticket" data-match-id="' + match.id + '">Купить билет</button></div>';
+        }).join('');
+        setPage('<div class="card"><h1>Матчи</h1><div class="grid">' + cards + '</div><div id="ticketMessage"></div></div>');
+        document.querySelectorAll('.buy-ticket').forEach(function(button) {
+          button.addEventListener('click', async function() {
+            if (!token || !currentUser) {
+              history.pushState(null, '', '/auth/login');
+              renderPage();
+              return;
+            }
+            try {
+              const ticket = await request('/tickets/' + button.dataset.matchId, { method: 'POST', body: JSON.stringify({}) });
+              document.getElementById('ticketMessage').innerHTML = '<p class="success">Билет куплен. Код: <strong>' + ticket.ticketCode + '</strong></p>';
+            } catch (error) {
+              document.getElementById('ticketMessage').innerHTML = showError(error.message);
+            }
+          });
+        });
+      } catch (error) {
+        setPage('<div class="card"><h1>Ошибка</h1>' + showError(error.message) + '</div>');
+      }
+    }
+
+    async function loadTeamsPage() {
+      try {
+        const teams = await request('/teams');
+        const cards = teams.map(function(team) {
+          return '<div class="team-card" data-id="' + team.id + '"><h3>' + team.name + '</h3><p class="muted">' + team.country + '</p><p class="muted">' + team.stadium + '</p></div>';
+        }).join('');
+
+        setPage('<div class="card"><h1>Команды</h1><div class="grid">' + cards + '</div><div id="teamDetail" class="team-detail">Нажмите на команду, чтобы посмотреть информацию.</div></div>');
+
+        document.querySelectorAll('.team-card').forEach(function(card) {
+          card.addEventListener('click', function() {
+            const teamId = Number(card.getAttribute('data-id'));
+            const team = teams.find(function(item) { return Number(item.id) === teamId; });
+            if (!team) return;
+            const roster = (team.roster || '').split(/\r?\n/).filter(Boolean).map(function(player) { return '<li>' + player + '</li>'; }).join('');
+            document.getElementById('teamDetail').innerHTML = '<h2>' + team.name + '</h2><p><strong>Страна:</strong> ' + team.country + '</p><p><strong>Стадион:</strong> ' + team.stadium + '</p><p>' + (team.description || 'Описание команды пока не добавлено.') + '</p><h3>Состав команды</h3>' + (roster ? '<ul>' + roster + '</ul>' : '<p class="muted">Состав пока не добавлен.</p>');
+          });
+        });
+      } catch (error) {
+        setPage('<div class="card"><h1>Ошибка</h1>' + showError(error.message) + '</div>');
+      }
+    }
+
+    async function loadNewsPage() {
+      try {
+        const news = await request('/news');
+        const cards = news.map(function(item) {
+          return '<div class="news-card"><h3>' + item.title + '</h3><p class="muted">' + item.category + '</p><p>' + item.text + '</p></div>';
+        }).join('');
+        setPage('<div class="card"><h1>Новости</h1><div class="grid">' + cards + '</div></div>');
+      } catch (error) {
+        setPage('<div class="card"><h1>Ошибка</h1>' + showError(error.message) + '</div>');
+      }
+    }
+
+    async function profilePage() {
+      if (!ensureAuth()) return;
+      try {
+        const tickets = await request('/tickets');
+        const ticketCards = tickets.length ? tickets.map(function(ticket) {
+          return '<div class="panel-card"><h3>' + ticket.homeTeam + ' vs ' + ticket.awayTeam + '</h3><p>' + formatDate(ticket.matchDate) + '</p><p>Код билета: <strong>' + ticket.ticketCode + '</strong></p></div>';
+        }).join('') : '<p class="muted">Купленных билетов пока нет.</p>';
+        setPage('<div class="card"><h1>Профиль</h1><p><strong>Имя:</strong> ' + currentUser.name + '</p><p><strong>Email:</strong> ' + currentUser.email + '</p><p><strong>Роль:</strong> ' + currentUser.role + '</p></div><div class="card"><h2>Мои билеты</h2><div class="grid">' + ticketCards + '</div></div>');
+      } catch (error) {
+        setPage('<div class="card"><h1>Ошибка</h1>' + showError(error.message) + '</div>');
+      }
+    }
+
+    async function loginPage() {
+      setPage('<div class="card"><h1>Вход</h1><form id="loginForm"><label>Email</label><input type="email" name="email" required /><label>Пароль</label><input type="password" name="password" required /><button type="submit">Войти</button></form><p><a href="#" id="forgotPasswordLink">Забыли пароль?</a></p><div id="loginMessage"></div></div>');
+      document.getElementById('forgotPasswordLink').addEventListener('click', function(event) {
+        event.preventDefault();
+        history.pushState(null, '', '/auth/forgot-password');
+        renderPage();
+      });
+      document.getElementById('loginForm').addEventListener('submit', async function(event) {
+        event.preventDefault();
+        const form = new FormData(event.target);
+        const data = Object.fromEntries(form.entries());
+        try {
+          const result = await request('/auth/login', { method: 'POST', body: JSON.stringify(data) });
+          token = result.token;
+          saveUser(result.user);
+          localStorage.setItem('token', token);
+          history.pushState(null, '', '/');
+          renderPage();
+        } catch (error) {
+          document.getElementById('loginMessage').innerHTML = showError(error.message);
+        }
+      });
+    }
+
+    async function registerPage() {
+      setPage('<div class="card"><h1>Регистрация</h1><form id="registerForm"><label>Имя</label><input name="name" required /><label>Email</label><input type="email" name="email" required /><label>Пароль</label><input type="password" name="password" minlength="8" pattern=".*[^A-Za-zА-Яа-я0-9\\s].*" title="Минимум 8 символов и хотя бы один спецсимвол" required /><label>Секретное слово</label><input name="resetKeyword" minlength="3" required /><button type="submit">Создать аккаунт</button></form><div id="registerMessage"></div></div>');
+      document.getElementById('registerForm').addEventListener('submit', async function(event) {
+        event.preventDefault();
+        const form = new FormData(event.target);
+        const data = Object.fromEntries(form.entries());
+        try {
+          const result = await request('/auth/register', { method: 'POST', body: JSON.stringify(data) });
+          token = result.token;
+          saveUser(result.user);
+          localStorage.setItem('token', token);
+          history.pushState(null, '', '/');
+          renderPage();
+        } catch (error) {
+          document.getElementById('registerMessage').innerHTML = showError(error.message);
+        }
+      });
+    }
+
+    async function forgotPasswordPage() {
+      setPage('<div class="card"><h1>Восстановление пароля</h1><form id="forgotPasswordForm"><label>Секретное слово</label><input name="resetKeyword" minlength="3" required /><label>Новый пароль</label><input type="password" name="password" minlength="8" pattern=".*[^A-Za-zА-Яа-я0-9\\s].*" title="Минимум 8 символов и хотя бы один спецсимвол" required /><button type="submit">Изменить пароль</button></form><p id="forgotPasswordMessage"></p></div>');
+      const forgotForm = document.getElementById('forgotPasswordForm');
+      const message = document.getElementById('forgotPasswordMessage');
+
+      forgotForm.addEventListener('submit', async function(event) {
+        event.preventDefault();
+        try {
+          const data = Object.fromEntries(new FormData(event.target).entries());
+          const result = await request('/auth/forgot-password', { method: 'POST', body: JSON.stringify(data) });
+          message.className = 'success';
+          message.textContent = result.message;
+          event.target.reset();
+        } catch (error) {
+          message.innerHTML = showError(error.message);
+        }
+      });
+    }
+
+    async function adminPage() {
+      if (!ensureAuth()) return;
+      if (currentUser.role !== 'admin') {
+        setPage('<div class="card"><h1>403</h1><p>У вас нет доступа к панели администратора.</p></div>');
+        return;
+      }
+
+      try {
+        const teams = await request('/teams');
+        const news = await request('/news');
+        const users = await request('/users');
+
+        setPage('<div class="card"><h1>Панель администратора</h1><div class="admin-grid"><form id="adminMatchForm"><h2>Новый матч</h2><label>Домашняя команда</label><input name="homeTeam" required /><label>Гостевая команда</label><input name="awayTeam" required /><label>Дата и время</label><input name="matchDate" type="datetime-local" required /><label>Чемпионат</label><input name="championship" required /><button type="submit">Создать матч</button><div id="adminMatchMessage"></div></form>' +
+          '<form id="adminUserForm"><h2>Новый пользователь</h2><label>Имя</label><input name="name" required /><label>Email</label><input type="email" name="email" required /><label>Пароль</label><input type="password" name="password" minlength="8" pattern=".*[^A-Za-zА-Яа-я0-9\\s].*" title="Минимум 8 символов и хотя бы один спецсимвол" required /><label>Роль</label><select name="role"><option value="user">Пользователь</option><option value="admin">Администратор</option></select><button type="submit">Добавить пользователя</button><div id="adminUserMessage"></div></form>' +
+          '<form id="adminTeamForm"><h2>Новая команда</h2><label>Название</label><input name="name" required /><label>Страна</label><input name="country" required /><label>Стадион</label><input name="stadium" required /><label>Информация о команде</label><textarea name="description" placeholder="История, достижения"></textarea><label>Состав</label><textarea name="roster" placeholder="Один игрок на строку"></textarea><button type="submit">Добавить команду</button><div id="adminTeamMessage"></div></form>' +
+          '<form id="adminTeamEditForm"><h2>Редактировать команду</h2><label>Команда</label><select id="teamSelect"></select><label>Название</label><input id="teamName" name="name" required /><label>Страна</label><input id="teamCountry" name="country" required /><label>Стадион</label><input id="teamStadium" name="stadium" required /><label>Информация о команде</label><textarea id="teamDescription" name="description"></textarea><label>Состав</label><textarea id="teamRoster" name="roster" placeholder="Один игрок на строку"></textarea><button type="submit">Сохранить команду</button><div id="adminTeamEditMessage"></div></form>' +
+          '<form id="adminNewsForm"><h2>Новая новость</h2><label>Заголовок</label><input name="title" required /><label>Текст</label><textarea name="text" required></textarea><label>Категория</label><input name="category" required /><button type="submit">Опубликовать новость</button><div id="adminNewsMessage"></div></form>' +
+          '<form id="adminNewsEditForm"><h2>Редактировать новость</h2><label>Новость</label><select id="newsSelect" name="id"></select><label>Заголовок</label><input id="newsTitle" name="title" required /><label>Текст</label><textarea id="newsText" name="text" required></textarea><label>Категория</label><input id="newsCategory" name="category" required /><button type="submit">Сохранить новость</button><div id="adminNewsEditMessage"></div></form>' +
+          '<div class="panel-card"><h2>Удалить команду</h2><select id="teamDeleteSelect"></select><button class="danger" id="deleteTeamBtn">Удалить команду</button></div>' +
+          '<div class="panel-card"><h2>Удалить новость</h2><select id="newsDeleteSelect"></select><button class="danger" id="deleteNewsBtn">Удалить новость</button></div>' +
+          '<div class="panel-card"><h2>Удалить пользователя</h2><select id="userDeleteSelect"></select><button class="danger" id="deleteUserBtn">Удалить пользователя</button></div>' +
+          '</div></div>');
+
+        const newsSelect = document.getElementById('newsSelect');
+        const newsDeleteSelect = document.getElementById('newsDeleteSelect');
+        const teamDeleteSelect = document.getElementById('teamDeleteSelect');
+        const teamSelect = document.getElementById('teamSelect');
+        const userDeleteSelect = document.getElementById('userDeleteSelect');
+        const teamName = document.getElementById('teamName');
+        const teamCountry = document.getElementById('teamCountry');
+        const teamStadium = document.getElementById('teamStadium');
+        const teamDescription = document.getElementById('teamDescription');
+        const teamRoster = document.getElementById('teamRoster');
+        const newsTitle = document.getElementById('newsTitle');
+        const newsText = document.getElementById('newsText');
+        const newsCategory = document.getElementById('newsCategory');
+
+        newsSelect.innerHTML = news.map(function(item) {
+          return '<option value="' + item.id + '">' + item.title + '</option>';
+        }).join('');
+        newsDeleteSelect.innerHTML = news.map(function(item) {
+          return '<option value="' + item.id + '">' + item.title + '</option>';
+        }).join('');
+        teamDeleteSelect.innerHTML = teams.map(function(item) {
+          return '<option value="' + item.id + '">' + item.name + '</option>';
+        }).join('');
+        teamSelect.innerHTML = teams.map(function(item) {
+          return '<option value="' + item.id + '">' + item.name + '</option>';
+        }).join('');
+        userDeleteSelect.innerHTML = users.filter(function(user) {
+          return user.id !== currentUser.id;
+        }).map(function(user) {
+          return '<option value="' + user.id + '">' + user.name + ' (' + user.email + ')</option>';
+        }).join('');
+
+        function selectNews(item) {
+          newsTitle.value = item.title;
+          newsText.value = item.text;
+          newsCategory.value = item.category;
+        }
+
+        const initialNews = news[0];
+        if (initialNews) { selectNews(initialNews); }
+
+        newsSelect.addEventListener('change', function() {
+          const selected = news.find(function(item) { return String(item.id) === newsSelect.value; });
+          if (selected) { selectNews(selected); }
+        });
+
+        function selectTeam(item) {
+          teamName.value = item.name;
+          teamCountry.value = item.country;
+          teamStadium.value = item.stadium;
+          teamDescription.value = item.description || '';
+          teamRoster.value = item.roster || '';
+        }
+
+        const initialTeam = teams[0];
+        if (initialTeam) { selectTeam(initialTeam); }
+
+        teamSelect.addEventListener('change', function() {
+          const selected = teams.find(function(item) { return String(item.id) === teamSelect.value; });
+          if (selected) { selectTeam(selected); }
+        });
+
+        document.getElementById('adminMatchForm').addEventListener('submit', async function(event) {
+          event.preventDefault();
+          const form = new FormData(event.target);
+          try {
+            await request('/matches', { method: 'POST', body: JSON.stringify(Object.fromEntries(form.entries())) });
+            document.getElementById('adminMatchMessage').innerHTML = '<p class="success">Матч создан.</p>';
+            event.target.reset();
+          } catch (error) {
+            document.getElementById('adminMatchMessage').innerHTML = showError(error.message);
+          }
+        });
+
+        document.getElementById('adminUserForm').addEventListener('submit', async function(event) {
+          event.preventDefault();
+          const form = new FormData(event.target);
+          try {
+            await request('/users', { method: 'POST', body: JSON.stringify(Object.fromEntries(form.entries())) });
+            document.getElementById('adminUserMessage').innerHTML = '<p class="success">Пользователь добавлен.</p>';
+            event.target.reset();
+          } catch (error) {
+            document.getElementById('adminUserMessage').innerHTML = showError(error.message);
+          }
+        });
+
+        document.getElementById('adminTeamForm').addEventListener('submit', async function(event) {
+          event.preventDefault();
+          try {
+            const form = new FormData(event.target);
+            await request('/teams', { method: 'POST', body: JSON.stringify(Object.fromEntries(form.entries())) });
+            document.getElementById('adminTeamMessage').innerHTML = '<p class="success">Команда добавлена.</p>';
+            event.target.reset();
+          } catch (error) {
+            document.getElementById('adminTeamMessage').innerHTML = showError(error.message);
+          }
+        });
+
+        document.getElementById('adminTeamEditForm').addEventListener('submit', async function(event) {
+          event.preventDefault();
+          try {
+            await request('/teams/' + teamSelect.value, { method: 'PUT', body: JSON.stringify({ name: teamName.value, country: teamCountry.value, stadium: teamStadium.value, description: teamDescription.value, roster: teamRoster.value }) });
+            document.getElementById('adminTeamEditMessage').innerHTML = '<p class="success">Информация о команде обновлена.</p>';
+          } catch (error) {
+            document.getElementById('adminTeamEditMessage').innerHTML = showError(error.message);
+          }
+        });
+
+        document.getElementById('adminNewsForm').addEventListener('submit', async function(event) {
+          event.preventDefault();
+          try {
+            const data = Object.fromEntries(new FormData(event.target).entries());
+            await request('/news', { method: 'POST', body: JSON.stringify(data) });
+            document.getElementById('adminNewsMessage').innerHTML = '<p class="success">Новость опубликована.</p>';
+            event.target.reset();
+          } catch (error) {
+            document.getElementById('adminNewsMessage').innerHTML = showError(error.message);
+          }
+        });
+
+        document.getElementById('adminNewsEditForm').addEventListener('submit', async function(event) {
+          event.preventDefault();
+          try {
+            await request('/news/' + newsSelect.value, { method: 'PUT', body: JSON.stringify({ title: newsTitle.value, text: newsText.value, category: newsCategory.value }) });
+            document.getElementById('adminNewsEditMessage').innerHTML = '<p class="success">Новость обновлена.</p>';
+          } catch (error) {
+            document.getElementById('adminNewsEditMessage').innerHTML = showError(error.message);
+          }
+        });
+
+        document.getElementById('deleteTeamBtn').addEventListener('click', async function() {
+          const id = teamDeleteSelect.value;
+          if (!id) return;
+          try {
+            await request('/teams/' + id, { method: 'DELETE' });
+            alert('Команда удалена');
+            renderPage();
+          } catch (error) {
+            alert(error.message);
+          }
+        });
+
+        document.getElementById('deleteNewsBtn').addEventListener('click', async function() {
+          const id = newsDeleteSelect.value;
+          if (!id) return;
+          try {
+            await request('/news/' + id, { method: 'DELETE' });
+            alert('Новость удалена');
+            renderPage();
+          } catch (error) {
+            alert(error.message);
+          }
+        });
+
+        document.getElementById('deleteUserBtn').addEventListener('click', async function() {
+          const id = userDeleteSelect.value;
+          if (!id) return;
+          try {
+            await request('/users/' + id, { method: 'DELETE' });
+            alert('Пользователь удалён');
+            renderPage();
+          } catch (error) {
+            alert(error.message);
+          }
+        });
+      } catch (error) {
+        setPage('<div class="card"><h1>Ошибка</h1>' + showError(error.message) + '</div>');
+      }
+    }
+
+    function renderPage() {
+      renderNav();
+      const page = getPath();
+      const pages = {
+        home: loadHomePage,
+        matches: loadMatchesPage,
+        teams: loadTeamsPage,
+        news: loadNewsPage,
+        profile: profilePage,
+        login: loginPage,
+        register: registerPage,
+        forgotPassword: forgotPasswordPage,
+        admin: adminPage
+      };
+      const handler = pages[page] || loadHomePage;
+      handler();
+    }
+
+    window.addEventListener('popstate', renderPage);
+    renderPage();
+  </script>
+</body>
+</html>
