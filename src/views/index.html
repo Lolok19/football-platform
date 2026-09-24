@@ -92,6 +92,56 @@
     .error { color: #ffe5e8; }
     .success { color: #ebffd9; }
     .cover { width: 100%; max-height: 180px; object-fit: cover; border-radius: 10px; margin-bottom: 10px; }
+    img {
+      cursor: zoom-in;
+      transition: transform 0.2s ease;
+    }
+    img:hover { transform: scale(1.01); }
+    .lightbox {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      background: rgba(3, 3, 6, 0.82);
+      z-index: 2000;
+    }
+    .lightbox.open {
+      display: flex;
+    }
+    .lightbox-image-wrap {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      max-width: min(96vw, 1200px);
+      max-height: 92vh;
+    }
+    .lightbox-image-wrap img {
+      display: block;
+      max-width: 100%;
+      max-height: 92vh;
+      object-fit: contain;
+      border-radius: 14px;
+      box-shadow: 0 26px 64px rgba(0, 0, 0, 0.5);
+      background: rgba(255, 255, 255, 0.08);
+      cursor: default;
+    }
+    .lightbox-close {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      border: none;
+      background: rgba(0,0,0,0.55);
+      color: white;
+      font-size: 28px;
+      line-height: 1;
+      cursor: pointer;
+    }
     @media (max-width: 600px) {
       nav { width: 100%; }
       nav a, nav button { width: 100%; text-align: center; }
@@ -99,7 +149,12 @@
   </style>
 </head>
 <body>
-  <header class="topbar">
+  <div id="imageLightbox" class="lightbox" aria-hidden="true">
+    <div class="lightbox-image-wrap">
+      <button type="button" id="lightboxClose" class="lightbox-close" aria-label="Закрыть изображение">×</button>
+      <img id="lightboxImage" src="" alt="Увеличенное изображение" />
+    </div>
+  </div>
     <div class="brand">⚽ Liverpool FC</div>
     <nav id="nav"></nav>
   </header>
@@ -120,6 +175,59 @@
 
     function setPage(content) { app.innerHTML = content; }
     function showError(message) { return '<p class="error">' + (message || 'Ошибка') + '</p>'; }
+
+    function closeLightbox() {
+      const lightbox = document.getElementById('imageLightbox');
+      const lightboxImage = document.getElementById('lightboxImage');
+      if (!lightbox || !lightboxImage) return;
+      lightbox.classList.remove('open');
+      lightbox.setAttribute('aria-hidden', 'true');
+      lightboxImage.src = '';
+      document.body.style.overflow = '';
+    }
+
+    function bindImageZoom() {
+      const lightbox = document.getElementById('imageLightbox');
+      const lightboxImage = document.getElementById('lightboxImage');
+      const closeButton = document.getElementById('lightboxClose');
+      if (!lightbox || !lightboxImage || !closeButton) return;
+
+      if (!closeButton.dataset.bound) {
+        closeButton.addEventListener('click', closeLightbox);
+        closeButton.dataset.bound = 'true';
+      }
+
+      if (!lightbox.dataset.bound) {
+        lightbox.addEventListener('click', function(event) {
+          if (event.target === lightbox) {
+            closeLightbox();
+          }
+        });
+        document.addEventListener('keydown', function(event) {
+          if (event.key === 'Escape' && lightbox.classList.contains('open')) {
+            closeLightbox();
+          }
+        });
+        lightbox.dataset.bound = 'true';
+      }
+
+      if (!document.body.dataset.zoomDelegated) {
+        document.body.addEventListener('click', function(event) {
+          const image = event.target.closest('img');
+          if (!image) return;
+          const src = image.currentSrc || image.src;
+          if (!src) return;
+          event.stopPropagation();
+          lightboxImage.src = src;
+          lightboxImage.alt = image.alt || 'Увеличенное изображение';
+          lightbox.classList.add('open');
+          lightbox.setAttribute('aria-hidden', 'false');
+          document.body.style.overflow = 'hidden';
+        });
+        document.body.dataset.zoomDelegated = 'true';
+      }
+    }
+
     function formatDate(value) {
       if (!value) return 'Дата будет объявлена';
       const date = new Date(value);
@@ -628,7 +736,7 @@
         admin: adminPage
       };
       const handler = pages[page] || loadHomePage;
-      handler();
+      Promise.resolve(handler()).then(bindImageZoom);
     }
 
     window.addEventListener('popstate', renderPage);
