@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const fs = require('fs');
 const { PORT } = require('./src/config/env');
 const { ensureDatabase } = require('./src/config/db');
 const { initDatabase, bootstrapAdmin, seedInitialData } = require('./src/db/schema');
@@ -9,8 +10,12 @@ const apiRoutes = require('./src/routes/api');
 
 const app = express();
 
+fs.mkdirSync(path.join(__dirname, 'uploads'), { recursive: true });
+
 app.use(cors());
 app.use(express.json());
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use('/api', require('./src/middleware/auth').requireSameOrigin);
 
 app.use('/api/auth', authRoutes);
 app.use('/api', apiRoutes);

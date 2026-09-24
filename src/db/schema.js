@@ -69,15 +69,28 @@ async function initDatabase() {
     if (!/Duplicate column name/i.test(error.message)) throw error;
   }
 
+  try {
+    await run('ALTER TABLE teams ADD COLUMN imageUrl VARCHAR(500) NULL');
+  } catch (error) {
+    if (!/Duplicate column name/i.test(error.message)) throw error;
+  }
+
   await run(`
     CREATE TABLE IF NOT EXISTS news (
       id INT AUTO_INCREMENT PRIMARY KEY,
       title VARCHAR(255) NOT NULL,
       text TEXT NOT NULL,
       category VARCHAR(255) NOT NULL,
+      imageUrl VARCHAR(500) NULL,
       createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
   `);
+
+  try {
+    await run('ALTER TABLE news ADD COLUMN imageUrl VARCHAR(500) NULL');
+  } catch (error) {
+    if (!/Duplicate column name/i.test(error.message)) throw error;
+  }
 
   await run(`
     CREATE TABLE IF NOT EXISTS favorites (

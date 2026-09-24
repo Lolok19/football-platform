@@ -1,11 +1,28 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
+const multer = require('multer');
 const { getAll, getOne, run } = require('../config/db');
 const { authRequired, adminRequired } = require('../middleware/auth');
 const { validatePassword } = require('../utils/validators');
 
 const router = express.Router();
+const imageUpload = multer({
+  dest: path.join(__dirname, '../../uploads'),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, callback) => callback(null, /^image\/(jpeg|png|webp|gif)$/.test(file.mimetype)),
+});
+
+router.post('/uploads', authRequired, adminRequired, imageUpload.single('image'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ message: 'Выберите изображение JPG, PNG, WEBP или GIF до 5 МБ' });
+  const extensions = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'image/gif': '.gif' };
+  const extension = extensions[req.file.mimetype] || '.bin';
+  const fileName = `${req.file.filename}${extension}`;
+  fs.renameSync(req.file.path, path.join(path.dirname(req.file.path), fileName));
+  return res.status(201).json({ imageUrl: `/uploads/${fileName}` });
+});
 
 router.get('/health', async (req, res) => {
   try {
@@ -94,10 +111,10 @@ router.delete('/users/:id', authRequired, adminRequired, async (req, res) => {
 
 router.post('/teams', authRequired, adminRequired, async (req, res) => {
   try {
-    const { name, country, stadium, description = '', roster = '' } = req.body;
+    const { name, country, stadium, description = '', roster = '', imageUrl = '' } = req.body;
     if (!name || !country || !stadium) return res.status(400).json({ message: 'Заполните название, страну и стадион' });
 
-    const result = await run('INSERT INTO teams (name, country, stadium, description, roster) VALUES (?, ?, ?, ?, ?)', [String(name).trim(), String(country).trim(), String(stadium).trim(), String(description).trim(), String(roster).trim()]);
+    const result = await run('INSERT INTO teams (name, country, stadium, description, roster, imageUrl) VALUES (?, ?, ?, ?, ?, ?)', [String(name).trim(), String(country).trim(), String(stadium).trim(), String(description).trim(), String(roster).trim(), String(imageUrl).trim()]);
     const team = await getOne('SELECT * FROM teams WHERE id = ?', [result.insertId]);
     return res.status(201).json(team);
   } catch (error) {
@@ -108,12 +125,12 @@ router.post('/teams', authRequired, adminRequired, async (req, res) => {
 
 router.put('/teams/:id', authRequired, adminRequired, async (req, res) => {
   try {
-    const { name, country, stadium, description = '', roster = '' } = req.body;
+    const { name, country, stadium, description = '', roster = '', imageUrl = '' } = req.body;
     if (!name || !country || !stadium) return res.status(400).json({ message: 'Заполните название, страну и стадион' });
 
     const result = await run(
-      'UPDATE teams SET name = ?, country = ?, stadium = ?, description = ?, roster = ? WHERE id = ?',
-      [String(name).trim(), String(country).trim(), String(stadium).trim(), String(description).trim(), String(roster).trim(), Number(req.params.id)]
+      'UPDATE teams SET name = ?, country = ?, stadium = ?, description = ?, roster = ?, imageUrl = ? WHERE id = ?',
+      [String(name).trim(), String(country).trim(), String(stadium).trim(), String(description).trim(), String(roster).trim(), String(imageUrl).trim(), Number(req.params.id)]
     );
     if (!result.affectedRows) return res.status(404).json({ message: 'Команда не найдена' });
     return res.json(await getOne('SELECT * FROM teams WHERE id = ?', [Number(req.params.id)]));
@@ -137,10 +154,10 @@ router.delete('/teams/:id', authRequired, adminRequired, async (req, res) => {
 
 router.put('/news/:id', authRequired, adminRequired, async (req, res) => {
   try {
-    const { title, text, category } = req.body;
+    const { title, text, category, imageUrl = '' } = req.body;
     if (!title || !text || !category) return res.status(400).json({ message: 'Заполните заголовок, текст и категорию' });
 
-    const result = await run('UPDATE news SET title = ?, text = ?, category = ? WHERE id = ?', [String(title).trim(), String(text).trim(), String(category).trim(), Number(req.params.id)]);
+    const result = await run('UPDATE news SET title = ?, text = ?, category = ?, imageUrl = ? WHERE id = ?', [String(title).trim(), String(text).trim(), String(category).trim(), String(imageUrl).trim(), Number(req.params.id)]);
     if (!result.affectedRows) return res.status(404).json({ message: 'Новость не найдена' });
 
     const news = await getOne('SELECT * FROM news WHERE id = ?', [Number(req.params.id)]);
@@ -153,12 +170,12 @@ router.put('/news/:id', authRequired, adminRequired, async (req, res) => {
 
 router.post('/news', authRequired, adminRequired, async (req, res) => {
   try {
-    const { title, text, category } = req.body;
+    const { title, text, category, imageUrl = '' } = req.body;
     if (!title || !text || !category) return res.status(400).json({ message: 'Заполните заголовок, текст и категорию' });
 
     const result = await run(
-      'INSERT INTO news (title, text, category) VALUES (?, ?, ?)',
-      [String(title).trim(), String(text).trim(), String(category).trim()]
+      'INSERT INTO news (title, text, category, imageUrl) VALUES (?, ?, ?, ?)',
+      [String(title).trim(), String(text).trim(), String(category).trim(), String(imageUrl).trim()]
     );
     return res.status(201).json(await getOne('SELECT * FROM news WHERE id = ?', [result.insertId]));
   } catch (error) {

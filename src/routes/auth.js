@@ -5,6 +5,27 @@ const { createToken, authRequired } = require('../middleware/auth');
 const { validateEmail, validatePassword } = require('../utils/validators');
 
 const router = express.Router();
+const loginAttempts = new Map();
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+const MAX_LOGIN_ATTEMPTS = 5;
+
+function isLoginBlocked(ip) {
+  const entry = loginAttempts.get(ip);
+  if (!entry || Date.now() - entry.startedAt > LOGIN_WINDOW_MS) {
+    loginAttempts.delete(ip);
+    return false;
+  }
+  return entry.count >= MAX_LOGIN_ATTEMPTS;
+}
+
+function recordLoginFailure(ip) {
+  const entry = loginAttempts.get(ip);
+  if (!entry || Date.now() - entry.startedAt > LOGIN_WINDOW_MS) {
+    loginAttempts.set(ip, { count: 1, startedAt: Date.now() });
+    return;
+  }
+  entry.count += 1;
+}
 
 router.post('/register', async (req, res) => {
   try {
@@ -66,20 +87,62 @@ router.post('/forgot-password', async (req, res) => {
 
 router.post('/login', async (req, res) => {
   try {
+    const clientIp = req.ip;
+    if (isLoginBlocked(clientIp)) {
+      return res.status(429).json({ message: 'Слишком много попыток входа. Повторите через 15 минут' });
+    }
     const { email, password } = req.body;
     if (!email || !password) return res.status(400).json({ message: 'Введите email и пароль' });
 
     const user = await getOne('SELECT * FROM users WHERE email = ?', [String(email).trim().toLowerCase()]);
-    if (!user) return res.status(401).json({ message: 'Неверный email или пароль' });
+    if (!user) {
+      recordLoginFailure(clientIp);
+      return res.status(401).json({ message: 'Неверный email или пароль' });
+    }
 
     const match = await bcrypt.compare(String(password), user.passwordHash);
-    if (!match) return res.status(401).json({ message: 'Неверный email или пароль' });
+    if (!match) {
+      recordLoginFailure(clientIp);
+      return res.status(401).json({ message: 'Неверный email или пароль' });
+    }
 
+    loginAttempts.delete(clientIp);
     const safeUser = { id: user.id, email: user.email, name: user.name, role: user.role, createdAt: user.createdAt };
     return res.json({ user: safeUser, token: createToken(safeUser) });
   } catch (error) {
     console.error('login error', error);
     return res.status(500).json({ message: 'Ошибка входа' });
+  }
+});
+
+router.put('/me', authRequired, async (req, res) => {
+  try {
+    const name = String(req.body.name || '').trim();
+    const currentPassword = String(req.body.currentPassword || '');
+    const newPassword = String(req.body.newPassword || '');
+    if (name.length < 2) return res.status(400).json({ message: 'Имя должно содержать минимум 2 символа' });
+
+    const user = await getOne('SELECT * FROM users WHERE id = ?', [req.user.id]);
+    if (!user) return res.status(404).json({ message: 'Пользователь не найден' });
+
+    if (newPassword) {
+      if (!currentPassword || !(await bcrypt.compare(currentPassword, user.passwordHash))) {
+        return res.status(400).json({ message: 'Текущий пароль указан неверно' });
+      }
+      if (!validatePassword(newPassword)) {
+        return res.status(400).json({ message: 'Новый пароль должен содержать минимум 8 символов и спецсимвол' });
+      }
+      const passwordHash = await bcrypt.hash(newPassword, 12);
+      await run('UPDATE users SET name = ?, passwordHash = ? WHERE id = ?', [name, passwordHash, req.user.id]);
+    } else {
+      await run('UPDATE users SET name = ? WHERE id = ?', [name, req.user.id]);
+    }
+
+    const updatedUser = await getOne('SELECT id, email, name, role, createdAt FROM users WHERE id = ?', [req.user.id]);
+    return res.json({ user: updatedUser, token: createToken(updatedUser) });
+  } catch (error) {
+    console.error('profile update error', error);
+    return res.status(500).json({ message: 'Не удалось обновить профиль' });
   }
 });
 

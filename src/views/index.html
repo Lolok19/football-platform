@@ -91,6 +91,7 @@
     button.danger { background: #47070d; color: white; }
     .error { color: #ffe5e8; }
     .success { color: #ebffd9; }
+    .cover { width: 100%; max-height: 180px; object-fit: cover; border-radius: 10px; margin-bottom: 10px; }
     @media (max-width: 600px) {
       nav { width: 100%; }
       nav a, nav button { width: 100%; text-align: center; }
@@ -139,6 +140,20 @@
         throw new Error((data && data.message) || 'Ошибка запроса');
       }
       return data;
+    }
+
+    async function uploadImage(file) {
+      if (!file) return '';
+      const form = new FormData();
+      form.append('image', file);
+      const response = await fetch(API + '/uploads', {
+        method: 'POST',
+        headers: token ? { Authorization: 'Bearer ' + token } : {},
+        body: form
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || 'Не удалось загрузить изображение');
+      return data.imageUrl;
     }
 
     function saveUser(user) {
@@ -259,7 +274,7 @@
       try {
         const teams = await request('/teams');
         const cards = teams.map(function(team) {
-          return '<div class="team-card" data-id="' + team.id + '"><h3>' + team.name + '</h3><p class="muted">' + team.country + '</p><p class="muted">' + team.stadium + '</p></div>';
+          return '<div class="team-card" data-id="' + team.id + '">' + (team.imageUrl ? '<img class="cover" src="' + team.imageUrl + '" alt="">' : '') + '<h3>' + team.name + '</h3><p class="muted">' + team.country + '</p><p class="muted">' + team.stadium + '</p></div>';
         }).join('');
 
         setPage('<div class="card"><h1>Команды</h1><div class="grid">' + cards + '</div><div id="teamDetail" class="team-detail">Нажмите на команду, чтобы посмотреть информацию.</div></div>');
@@ -282,7 +297,7 @@
       try {
         const news = await request('/news');
         const cards = news.map(function(item) {
-          return '<div class="news-card"><h3>' + item.title + '</h3><p class="muted">' + item.category + '</p><p>' + item.text + '</p></div>';
+          return '<div class="news-card">' + (item.imageUrl ? '<img class="cover" src="' + item.imageUrl + '" alt="">' : '') + '<h3>' + item.title + '</h3><p class="muted">' + item.category + '</p><p>' + item.text + '</p></div>';
         }).join('');
         setPage('<div class="card"><h1>Новости</h1><div class="grid">' + cards + '</div></div>');
       } catch (error) {
@@ -297,7 +312,19 @@
         const ticketCards = tickets.length ? tickets.map(function(ticket) {
           return '<div class="panel-card"><h3>' + ticket.homeTeam + ' vs ' + ticket.awayTeam + '</h3><p>' + formatDate(ticket.matchDate) + '</p><p>Код билета: <strong>' + ticket.ticketCode + '</strong></p></div>';
         }).join('') : '<p class="muted">Купленных билетов пока нет.</p>';
-        setPage('<div class="card"><h1>Профиль</h1><p><strong>Имя:</strong> ' + currentUser.name + '</p><p><strong>Email:</strong> ' + currentUser.email + '</p><p><strong>Роль:</strong> ' + currentUser.role + '</p></div><div class="card"><h2>Мои билеты</h2><div class="grid">' + ticketCards + '</div></div>');
+        setPage('<div class="card"><h1>Профиль</h1><p><strong>Email:</strong> ' + currentUser.email + '</p><p><strong>Роль:</strong> ' + currentUser.role + '</p><form id="profileForm"><label>Имя</label><input name="name" value="' + currentUser.name + '" minlength="2" required /><label>Текущий пароль</label><input type="password" name="currentPassword" /><label>Новый пароль</label><input type="password" name="newPassword" minlength="8" pattern=".*[^A-Za-zА-Яа-я0-9\\s].*" title="Минимум 8 символов и хотя бы один спецсимвол" /><button type="submit">Сохранить изменения</button><div id="profileMessage"></div></form></div><div class="card"><h2>Мои билеты</h2><div class="grid">' + ticketCards + '</div></div>');
+        document.getElementById('profileForm').addEventListener('submit', async function(event) {
+          event.preventDefault();
+          try {
+            const result = await request('/auth/me', { method: 'PUT', body: JSON.stringify(Object.fromEntries(new FormData(event.target).entries())) });
+            token = result.token;
+            localStorage.setItem('token', token);
+            saveUser(result.user);
+            document.getElementById('profileMessage').innerHTML = '<p class="success">Профиль обновлён.</p>';
+          } catch (error) {
+            document.getElementById('profileMessage').innerHTML = showError(error.message);
+          }
+        });
       } catch (error) {
         setPage('<div class="card"><h1>Ошибка</h1>' + showError(error.message) + '</div>');
       }
@@ -379,10 +406,10 @@
 
         setPage('<div class="card"><h1>Панель администратора</h1><div class="admin-grid"><form id="adminMatchForm"><h2>Новый матч</h2><label>Домашняя команда</label><input name="homeTeam" required /><label>Гостевая команда</label><input name="awayTeam" required /><label>Дата и время</label><input name="matchDate" type="datetime-local" required /><label>Чемпионат</label><input name="championship" required /><button type="submit">Создать матч</button><div id="adminMatchMessage"></div></form>' +
           '<form id="adminUserForm"><h2>Новый пользователь</h2><label>Имя</label><input name="name" required /><label>Email</label><input type="email" name="email" required /><label>Пароль</label><input type="password" name="password" minlength="8" pattern=".*[^A-Za-zА-Яа-я0-9\\s].*" title="Минимум 8 символов и хотя бы один спецсимвол" required /><label>Роль</label><select name="role"><option value="user">Пользователь</option><option value="admin">Администратор</option></select><button type="submit">Добавить пользователя</button><div id="adminUserMessage"></div></form>' +
-          '<form id="adminTeamForm"><h2>Новая команда</h2><label>Название</label><input name="name" required /><label>Страна</label><input name="country" required /><label>Стадион</label><input name="stadium" required /><label>Информация о команде</label><textarea name="description" placeholder="История, достижения"></textarea><label>Состав</label><textarea name="roster" placeholder="Один игрок на строку"></textarea><button type="submit">Добавить команду</button><div id="adminTeamMessage"></div></form>' +
-          '<form id="adminTeamEditForm"><h2>Редактировать команду</h2><label>Команда</label><select id="teamSelect"></select><label>Название</label><input id="teamName" name="name" required /><label>Страна</label><input id="teamCountry" name="country" required /><label>Стадион</label><input id="teamStadium" name="stadium" required /><label>Информация о команде</label><textarea id="teamDescription" name="description"></textarea><label>Состав</label><textarea id="teamRoster" name="roster" placeholder="Один игрок на строку"></textarea><button type="submit">Сохранить команду</button><div id="adminTeamEditMessage"></div></form>' +
-          '<form id="adminNewsForm"><h2>Новая новость</h2><label>Заголовок</label><input name="title" required /><label>Текст</label><textarea name="text" required></textarea><label>Категория</label><input name="category" required /><button type="submit">Опубликовать новость</button><div id="adminNewsMessage"></div></form>' +
-          '<form id="adminNewsEditForm"><h2>Редактировать новость</h2><label>Новость</label><select id="newsSelect" name="id"></select><label>Заголовок</label><input id="newsTitle" name="title" required /><label>Текст</label><textarea id="newsText" name="text" required></textarea><label>Категория</label><input id="newsCategory" name="category" required /><button type="submit">Сохранить новость</button><div id="adminNewsEditMessage"></div></form>' +
+          '<form id="adminTeamForm"><h2>Новая команда</h2><label>Название</label><input name="name" required /><label>Страна</label><input name="country" required /><label>Стадион</label><input name="stadium" required /><label>Изображение</label><input id="teamImageFile" type="file" accept="image/jpeg,image/png,image/webp,image/gif" /><label>Информация о команде</label><textarea name="description" placeholder="История, достижения"></textarea><label>Состав</label><textarea name="roster" placeholder="Один игрок на строку"></textarea><button type="submit">Добавить команду</button><div id="adminTeamMessage"></div></form>' +
+          '<form id="adminTeamEditForm"><h2>Редактировать команду</h2><label>Команда</label><select id="teamSelect"></select><label>Название</label><input id="teamName" name="name" required /><label>Страна</label><input id="teamCountry" name="country" required /><label>Стадион</label><input id="teamStadium" name="stadium" required /><label>Новое изображение</label><input id="teamEditImageFile" type="file" accept="image/jpeg,image/png,image/webp,image/gif" /><label>Информация о команде</label><textarea id="teamDescription" name="description"></textarea><label>Состав</label><textarea id="teamRoster" name="roster" placeholder="Один игрок на строку"></textarea><button type="submit">Сохранить команду</button><div id="adminTeamEditMessage"></div></form>' +
+          '<form id="adminNewsForm"><h2>Новая новость</h2><label>Заголовок</label><input name="title" required /><label>Текст</label><textarea name="text" required></textarea><label>Категория</label><input name="category" required /><label>Изображение</label><input id="newsImageFile" type="file" accept="image/jpeg,image/png,image/webp,image/gif" /><button type="submit">Опубликовать новость</button><div id="adminNewsMessage"></div></form>' +
+          '<form id="adminNewsEditForm"><h2>Редактировать новость</h2><label>Новость</label><select id="newsSelect" name="id"></select><label>Заголовок</label><input id="newsTitle" name="title" required /><label>Текст</label><textarea id="newsText" name="text" required></textarea><label>Категория</label><input id="newsCategory" name="category" required /><label>Новое изображение</label><input id="newsEditImageFile" type="file" accept="image/jpeg,image/png,image/webp,image/gif" /><button type="submit">Сохранить новость</button><div id="adminNewsEditMessage"></div></form>' +
           '<div class="panel-card"><h2>Удалить команду</h2><select id="teamDeleteSelect"></select><button class="danger" id="deleteTeamBtn">Удалить команду</button></div>' +
           '<div class="panel-card"><h2>Удалить новость</h2><select id="newsDeleteSelect"></select><button class="danger" id="deleteNewsBtn">Удалить новость</button></div>' +
           '<div class="panel-card"><h2>Удалить пользователя</h2><select id="userDeleteSelect"></select><button class="danger" id="deleteUserBtn">Удалить пользователя</button></div>' +
@@ -398,9 +425,13 @@
         const teamStadium = document.getElementById('teamStadium');
         const teamDescription = document.getElementById('teamDescription');
         const teamRoster = document.getElementById('teamRoster');
+        const teamImageFile = document.getElementById('teamImageFile');
+        const teamEditImageFile = document.getElementById('teamEditImageFile');
         const newsTitle = document.getElementById('newsTitle');
         const newsText = document.getElementById('newsText');
         const newsCategory = document.getElementById('newsCategory');
+        const newsImageFile = document.getElementById('newsImageFile');
+        const newsEditImageFile = document.getElementById('newsEditImageFile');
 
         newsSelect.innerHTML = news.map(function(item) {
           return '<option value="' + item.id + '">' + item.title + '</option>';
@@ -478,7 +509,8 @@
           event.preventDefault();
           try {
             const form = new FormData(event.target);
-            await request('/teams', { method: 'POST', body: JSON.stringify(Object.fromEntries(form.entries())) });
+            const imageUrl = await uploadImage(teamImageFile.files[0]);
+            await request('/teams', { method: 'POST', body: JSON.stringify(Object.assign(Object.fromEntries(form.entries()), { imageUrl: imageUrl })) });
             document.getElementById('adminTeamMessage').innerHTML = '<p class="success">Команда добавлена.</p>';
             event.target.reset();
           } catch (error) {
@@ -489,7 +521,9 @@
         document.getElementById('adminTeamEditForm').addEventListener('submit', async function(event) {
           event.preventDefault();
           try {
-            await request('/teams/' + teamSelect.value, { method: 'PUT', body: JSON.stringify({ name: teamName.value, country: teamCountry.value, stadium: teamStadium.value, description: teamDescription.value, roster: teamRoster.value }) });
+            const selectedTeam = teams.find(function(item) { return String(item.id) === teamSelect.value; });
+            const imageUrl = await uploadImage(teamEditImageFile.files[0]);
+            await request('/teams/' + teamSelect.value, { method: 'PUT', body: JSON.stringify({ name: teamName.value, country: teamCountry.value, stadium: teamStadium.value, description: teamDescription.value, roster: teamRoster.value, imageUrl: imageUrl || (selectedTeam && selectedTeam.imageUrl) || '' }) });
             document.getElementById('adminTeamEditMessage').innerHTML = '<p class="success">Информация о команде обновлена.</p>';
           } catch (error) {
             document.getElementById('adminTeamEditMessage').innerHTML = showError(error.message);
@@ -500,6 +534,7 @@
           event.preventDefault();
           try {
             const data = Object.fromEntries(new FormData(event.target).entries());
+            data.imageUrl = await uploadImage(newsImageFile.files[0]);
             await request('/news', { method: 'POST', body: JSON.stringify(data) });
             document.getElementById('adminNewsMessage').innerHTML = '<p class="success">Новость опубликована.</p>';
             event.target.reset();
@@ -511,7 +546,9 @@
         document.getElementById('adminNewsEditForm').addEventListener('submit', async function(event) {
           event.preventDefault();
           try {
-            await request('/news/' + newsSelect.value, { method: 'PUT', body: JSON.stringify({ title: newsTitle.value, text: newsText.value, category: newsCategory.value }) });
+            const selectedNews = news.find(function(item) { return String(item.id) === newsSelect.value; });
+            const imageUrl = await uploadImage(newsEditImageFile.files[0]);
+            await request('/news/' + newsSelect.value, { method: 'PUT', body: JSON.stringify({ title: newsTitle.value, text: newsText.value, category: newsCategory.value, imageUrl: imageUrl || (selectedNews && selectedNews.imageUrl) || '' }) });
             document.getElementById('adminNewsEditMessage').innerHTML = '<p class="success">Новость обновлена.</p>';
           } catch (error) {
             document.getElementById('adminNewsEditMessage').innerHTML = showError(error.message);

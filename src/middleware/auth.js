@@ -37,4 +37,13 @@ function adminRequired(req, res, next) {
   next();
 }
 
-module.exports = { createToken, authRequired, adminRequired };
+function requireSameOrigin(req, res, next) {
+  const origin = req.headers.origin;
+  const host = req.headers.host;
+  if (origin && !origin.endsWith(`://${host}`)) {
+    return res.status(403).json({ message: 'Недопустимый источник запроса' });
+  }
+  next();
+}
+
+module.exports = { createToken, authRequired, adminRequired, requireSameOrigin };
