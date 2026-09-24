@@ -403,6 +403,7 @@
         const teams = await request('/teams');
         const news = await request('/news');
         const users = await request('/users');
+        const matches = await request('/matches');
 
         setPage('<div class="card"><h1>Панель администратора</h1><div class="admin-grid"><form id="adminMatchForm"><h2>Новый матч</h2><label>Домашняя команда</label><input name="homeTeam" required /><label>Гостевая команда</label><input name="awayTeam" required /><label>Дата и время</label><input name="matchDate" type="datetime-local" required /><label>Чемпионат</label><input name="championship" required /><button type="submit">Создать матч</button><div id="adminMatchMessage"></div></form>' +
           '<form id="adminUserForm"><h2>Новый пользователь</h2><label>Имя</label><input name="name" required /><label>Email</label><input type="email" name="email" required /><label>Пароль</label><input type="password" name="password" minlength="8" pattern=".*[^A-Za-zА-Яа-я0-9\\s].*" title="Минимум 8 символов и хотя бы один спецсимвол" required /><label>Роль</label><select name="role"><option value="user">Пользователь</option><option value="admin">Администратор</option></select><button type="submit">Добавить пользователя</button><div id="adminUserMessage"></div></form>' +
@@ -412,11 +413,13 @@
           '<form id="adminNewsEditForm"><h2>Редактировать новость</h2><label>Новость</label><select id="newsSelect" name="id"></select><label>Заголовок</label><input id="newsTitle" name="title" required /><label>Текст</label><textarea id="newsText" name="text" required></textarea><label>Категория</label><input id="newsCategory" name="category" required /><label>Новое изображение</label><input id="newsEditImageFile" type="file" accept="image/jpeg,image/png,image/webp,image/gif" /><button type="submit">Сохранить новость</button><div id="adminNewsEditMessage"></div></form>' +
           '<div class="panel-card"><h2>Удалить команду</h2><select id="teamDeleteSelect"></select><button class="danger" id="deleteTeamBtn">Удалить команду</button></div>' +
           '<div class="panel-card"><h2>Удалить новость</h2><select id="newsDeleteSelect"></select><button class="danger" id="deleteNewsBtn">Удалить новость</button></div>' +
+          '<div class="panel-card"><h2>Удалить матч</h2><select id="matchDeleteSelect"></select><button class="danger" id="deleteMatchBtn">Удалить матч</button></div>' +
           '<div class="panel-card"><h2>Удалить пользователя</h2><select id="userDeleteSelect"></select><button class="danger" id="deleteUserBtn">Удалить пользователя</button></div>' +
           '</div></div>');
 
         const newsSelect = document.getElementById('newsSelect');
         const newsDeleteSelect = document.getElementById('newsDeleteSelect');
+        const matchDeleteSelect = document.getElementById('matchDeleteSelect');
         const teamDeleteSelect = document.getElementById('teamDeleteSelect');
         const teamSelect = document.getElementById('teamSelect');
         const userDeleteSelect = document.getElementById('userDeleteSelect');
@@ -438,6 +441,9 @@
         }).join('');
         newsDeleteSelect.innerHTML = news.map(function(item) {
           return '<option value="' + item.id + '">' + item.title + '</option>';
+        }).join('');
+        matchDeleteSelect.innerHTML = matches.map(function(item) {
+          return '<option value="' + item.id + '">' + item.homeTeam + ' — ' + item.awayTeam + ' (' + formatDate(item.matchDate) + ')</option>';
         }).join('');
         teamDeleteSelect.innerHTML = teams.map(function(item) {
           return '<option value="' + item.id + '">' + item.name + '</option>';
@@ -573,6 +579,18 @@
           try {
             await request('/news/' + id, { method: 'DELETE' });
             alert('Новость удалена');
+            renderPage();
+          } catch (error) {
+            alert(error.message);
+          }
+        });
+
+        document.getElementById('deleteMatchBtn').addEventListener('click', async function() {
+          const id = matchDeleteSelect.value;
+          if (!id || !confirm('Удалить выбранный матч? Это действие нельзя отменить.')) return;
+          try {
+            await request('/matches/' + id, { method: 'DELETE' });
+            alert('Матч удалён');
             renderPage();
           } catch (error) {
             alert(error.message);
